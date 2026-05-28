@@ -786,6 +786,11 @@
           setTimeout(() => {
             if (cellEl) cellEl.style.transform = '';
           }, 120);
+
+          // Check for blackout immediately after a personal mark in a room
+          if (!window.blackoutCelebratedThisCard) {
+            checkForBlackout();
+          }
         }
 
         // Sync the whole position object to Firebase
@@ -1133,17 +1138,31 @@
         roomListener = null;
       }
 
+      // Preserve the current player's personal marks in local format before leaving
+      const personalMarks = {};
+      if (currentPlayerSlot) {
+        for (let pos in squareState) {
+          if (squareState[pos] && squareState[pos][currentPlayerSlot]) {
+            personalMarks[pos] = {
+              markedBy: roomPlayers[currentPlayerSlot]?.name || playerName,
+              ts: squareState[pos][currentPlayerSlot].ts
+            };
+          }
+        }
+      }
+
       currentRoomCode = null;
       currentPlayerSlot = null;
       roomPlayers = {};
       window.bingoCelebratedThisCard = false;
       window.blackoutCelebratedThisCard = false;
-      updateRoomUI();
 
-      // Re-render grid without room-specific corner logic
+      // Restore personal marks so the grid still shows the player's own completions
+      squareState = personalMarks;
+
+      updateRoomUI();
       renderGrid();
 
-      // Go back to local-only mode
       alert("Left the room. You're now back in local mode.");
     }
 
@@ -1220,9 +1239,9 @@
         return squareState[k] && squareState[k][currentPlayerSlot];
       }).length;
 
-      if (totalMarkedByMe >= 25) {
+      if (totalMarkedByMe >= 25 && !window.blackoutCelebratedThisCard) {
         window.blackoutCelebratedThisCard = true;
-        // Show a dedicated blackout celebration
+
         const overlay = document.getElementById('win-overlay');
         const title = document.getElementById('win-title');
         const subtitle = document.getElementById('win-subtitle');
@@ -1232,7 +1251,7 @@
         title.style.color = '#facc15';
         subtitle.textContent = 'You completed the entire card. Absolute legend.';
 
-        launchConfetti(300); // Big celebration
+        launchConfetti(320);
       }
     }
 
