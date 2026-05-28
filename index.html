@@ -652,6 +652,7 @@
       // squareState[12] = { markedBy: playerName, ts: Date.now() };
 
       saveToLocalStorage(seed);
+      window.bingoCelebratedThisCard = false;
       renderGrid();
       updateCardInfo(seed);
     }
@@ -695,8 +696,12 @@
         span.textContent = text;
         cell.appendChild(span);
 
-        // Room corner indicators — show everyone who has this position (not just you)
+        // Room corner indicators — show everyone who has this position
         if (currentRoomCode) {
+          // Clear any old attribution that might be lingering
+          const oldAttr = cell.querySelector('.attribution');
+          if (oldAttr) oldAttr.remove();
+
           Object.keys(positionMarks).forEach(slot => {
             if (slot.startsWith('p')) {
               const corner = document.createElement('div');
@@ -706,7 +711,7 @@
             }
           });
         } else if (positionMarks.markedBy) {
-          // Non-room local mode attribution
+          // Non-room local mode
           const attr = document.createElement('div');
           attr.className = 'attribution';
           attr.textContent = positionMarks.markedBy;
@@ -814,7 +819,11 @@
 
       saveToLocalStorage();
       updateMarkedCount();
-      checkBingo(false);
+
+      // Only check for bingo celebration on marking actions in rooms, and only if we haven't already celebrated a bingo this card
+      if (!currentRoomCode || !window.bingoCelebratedThisCard) {
+        checkBingo(false);
+      }
     }
 
     function promptPhotoForSquare(index, cellEl) {
@@ -883,6 +892,7 @@
     function resetMarks() {
       if (!confirm("Clear all marks and photos on this card?")) return;
       squareState = {};
+      window.bingoCelebratedThisCard = false;
       saveToLocalStorage();
       renderGrid();
     }
@@ -1089,33 +1099,13 @@
           roomPlayers = data.players;
         }
 
-        // Sync position-based multi-player marks
+        // Sync position-based multi-player marks - full replace for reliability
         const incomingMarks = data.marks || {};
-        let changed = false;
+        const previousMarks = JSON.stringify(squareState);
 
-        for (let pos in incomingMarks) {
-          const newPositionMarks = incomingMarks[pos];
-          const currentPositionMarks = squareState[pos] || {};
+        squareState = incomingMarks;
 
-          // Merge or replace with latest from server for this position
-          if (JSON.stringify(currentPositionMarks) !== JSON.stringify(newPositionMarks)) {
-            squareState[pos] = newPositionMarks;
-            changed = true;
-          }
-        }
-
-        // Remove positions that no longer have any marks in the room
-        for (let pos in squareState) {
-          if (!incomingMarks[pos] && currentRoomCode) {
-            // Only clear if we're in room mode
-            if (typeof squareState[pos] === 'object' && !squareState[pos].markedBy) {
-              delete squareState[pos];
-              changed = true;
-            }
-          }
-        }
-
-        if (changed) {
+        if (JSON.stringify(squareState) !== previousMarks) {
           renderGrid();
           updateMarkedCount();
         }
@@ -1131,6 +1121,7 @@
       currentRoomCode = null;
       currentPlayerSlot = null;
       roomPlayers = {};
+      window.bingoCelebratedThisCard = false;
       updateRoomUI();
 
       // Go back to local-only mode
@@ -1194,6 +1185,7 @@
 
         const isBlackout = totalMarked >= 25;
 
+        window.bingoCelebratedThisCard = true;
         showWinOverlay(wins, isBlackout);
         return true;
       } else if (showAlertIfNone) {
