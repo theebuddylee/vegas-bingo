@@ -333,24 +333,29 @@
       </button>
     </div>
 
-    <!-- Instructions / Tips -->
+    <!-- Instructions -->
     <div class="max-w-2xl mx-auto bg-slate-900/60 border border-slate-700 rounded-3xl p-6 text-sm">
       <div class="flex items-start gap-x-4">
         <i class="fa-solid fa-info-circle mt-0.5 text-xl text-yellow-400"></i>
-        <div class="space-y-3 text-slate-300">
+        <div class="space-y-2.5 text-slate-300 text-sm">
           <div>
-            <strong class="text-yellow-300">How to play:</strong> Tap any square to mark it (turns black with white text + your name). 
-            First to complete a full line wins. The center Bellagio square is the traditional "free" space.
+            <strong class="text-yellow-300">How it works:</strong><br>
+            Everyone gets their own random card. You only complete the squares on <em>your</em> card.
           </div>
-          <div class="text-xs text-slate-400">
-            <strong>Photo evidence:</strong> After marking, you'll be prompted for a photo. Or <strong>right-click / long-press</strong> any square anytime to attach or replace a photo. Tap the small thumbnail to view it full-screen.
+          <div>
+            <strong class="text-yellow-300">In a Room:</strong><br>
+            Up to 4 players can join the same room. Your card is private, but you can see what others have completed via the colored corners on each square.
           </div>
-          <div class="text-xs text-slate-400">
-            <strong>Group mode:</strong> Change the "You are" name field, then mark squares — attribution shows who completed what. 
-            For live syncing across phones, see the note at the very bottom of this file (Firebase setup).
+          <div>
+            <strong class="text-yellow-300">Creating / Joining Rooms:</strong><br>
+            Click <strong>Create Room</strong> to generate a code, or enter a code to join. Share the code with your group.
           </div>
-          <div class="text-xs text-slate-400">
-            Use the same seed phrase with your crew for identical cards. Everything auto-saves locally.
+          <div>
+            <strong class="text-yellow-300">Bingo &amp; Blackout:</strong><br>
+            First to get 5 in a row (including the center Bellagio square) wins. If you complete all 25 squares, you get a special Blackout celebration!
+          </div>
+          <div class="text-xs text-slate-400 pt-1">
+            You can keep playing after a bingo. Generate a new card anytime with the yellow button.
           </div>
         </div>
       </div>
@@ -360,24 +365,7 @@
       PORTED FROM THE LEGENDARY VEGAS_BINGO.XLS • 100 CHALLENGES • NO RULES, JUST VIBES
     </div>
 
-    <!-- Live Group Upgrade Info -->
-    <div class="max-w-2xl mx-auto mt-10 bg-slate-900/70 border border-purple-700/50 rounded-3xl p-6 text-sm">
-      <div class="flex items-center gap-x-2 mb-3 text-purple-300">
-        <i class="fa-solid fa-users"></i>
-        <span class="font-semibold tracking-wide">LIVE GROUP MODE (across multiple phones)</span>
-      </div>
-      <div class="text-slate-300 text-xs leading-relaxed space-y-2">
-        <p>The current version gives you great local group play (everyone can use their own phone, switch names, attach photos, and show each other the screen).</p>
-        <p><strong>For true real-time syncing</strong> (marks + photos appear instantly on everyone else's phone when someone completes a square):</p>
-        <ol class="list-decimal pl-4 space-y-1 mt-2">
-          <li>Create a free Firebase project at <a href="https://console.firebase.google.com" target="_blank" class="underline text-yellow-400">console.firebase.google.com</a></li>
-          <li>Enable Realtime Database + Storage (start in test mode)</li>
-          <li>Copy your config (the object with apiKey, projectId, etc.)</li>
-          <li>I can wire it in for you in &lt;5 minutes — just say the word and paste your config here. Rooms will use short codes like "VEGAS42".</li>
-        </ol>
-        <p class="text-[10px] text-slate-400 mt-3">This keeps everything in one file while giving you proper live collaboration with photo uploads to the cloud.</p>
-      </div>
-    </div>
+
   </div>
 
   <!-- All Challenges Modal -->
@@ -431,17 +419,18 @@
   <!-- Bingo Win Overlay -->
   <div id="win-overlay" onclick="hideWinOverlay()" 
        class="hidden fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-6">
-    <div class="text-center max-w-md">
+    <div class="text-center max-w-md" onclick="event.stopImmediatePropagation()">
       <div class="text-[92px] leading-none mb-1">🎰</div>
-      <div class="text-7xl font-black tracking-tighter text-yellow-400 mb-1 bingo-win">BINGO!</div>
-      <div class="text-2xl text-purple-300 mb-6">You did it, legend.</div>
+      <div id="win-title" class="text-7xl font-black tracking-tighter text-yellow-400 mb-1 bingo-win">BINGO!</div>
+      <div id="win-subtitle" class="text-2xl text-purple-300 mb-6">You did it, legend.</div>
       
       <div class="flex justify-center gap-3">
-        <button onclick="hideWinOverlay(); resetMarks()" 
-                class="px-8 py-3 bg-white/10 hover:bg-white/20 rounded-2xl font-semibold">Clear Marks</button>
+        <button onclick="hideWinOverlay()" 
+                class="px-8 py-3 bg-white/10 hover:bg-white/20 rounded-2xl font-semibold">Keep Playing</button>
         <button onclick="hideWinOverlay(); generateRandomCard()" 
                 class="px-8 py-3 bg-yellow-400 hover:bg-yellow-300 active:bg-yellow-500 text-black font-bold rounded-2xl">New Card</button>
       </div>
+      <div class="text-[10px] text-slate-400 mt-4">Click anywhere to close</div>
     </div>
   </div>
 
@@ -1194,7 +1183,18 @@
       if (diag2.every(i => isCompleted(i))) wins.push({type: 'Diagonal', indices: diag2});
 
       if (wins.length > 0) {
-        showWinOverlay(wins);
+        // Check for Blackout (all 25 squares completed by the player)
+        const totalMarked = Object.keys(squareState).filter(k => {
+          if (currentRoomCode && currentPlayerSlot) {
+            return squareState[k] && squareState[k][currentPlayerSlot];
+          } else {
+            return squareState[k] && squareState[k].markedBy;
+          }
+        }).length;
+
+        const isBlackout = totalMarked >= 25;
+
+        showWinOverlay(wins, isBlackout);
         return true;
       } else if (showAlertIfNone) {
         alert("Not yet... keep hustling!");
@@ -1202,14 +1202,27 @@
       return false;
     }
 
-    function showWinOverlay(wins) {
+    function showWinOverlay(wins, isBlackout = false) {
       const overlay = document.getElementById('win-overlay');
+      const title = document.getElementById('win-title');
+      const subtitle = document.getElementById('win-subtitle');
+
       overlay.style.display = 'flex';
+
+      if (isBlackout) {
+        title.textContent = 'BLACKOUT!';
+        title.style.color = '#facc15';
+        subtitle.textContent = 'You completed the entire card. Absolute legend.';
+        // Extra confetti for blackout
+        launchConfetti(280);
+      } else {
+        title.textContent = 'BINGO!';
+        title.style.color = '#facc15';
+        subtitle.textContent = 'You did it, legend.';
+        launchConfetti(140);
+      }
       
-      // Fire confetti
-      launchConfetti();
-      
-      // Optional: mark the winning lines visually (quick flash)
+      // Flash the winning lines
       setTimeout(() => {
         wins.forEach(win => {
           win.indices.forEach(i => {
@@ -1226,17 +1239,24 @@
     }
 
     function hideWinOverlay() {
-      document.getElementById('win-overlay').style.display = 'none';
+      const overlay = document.getElementById('win-overlay');
+      overlay.style.display = 'none';
+
+      // Reset title/subtitle for next time
+      const title = document.getElementById('win-title');
+      const subtitle = document.getElementById('win-subtitle');
+      if (title) title.textContent = 'BINGO!';
+      if (subtitle) subtitle.textContent = 'You did it, legend.';
     }
 
     // Very small inline confetti (no external deps)
-    function launchConfetti() {
+    function launchConfetti(count = 140) {
       const colors = ['#facc15', '#c026ff', '#22c55e', '#e0e7ff'];
       const container = document.createElement('div');
       container.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:70;overflow:hidden';
       document.body.appendChild(container);
 
-      for (let i = 0; i < 140; i++) {
+      for (let i = 0; i < count; i++) {
         const p = document.createElement('div');
         p.style.cssText = `position:absolute;width:7px;height:9px;background:${colors[i % colors.length]};border-radius:1px;left:${Math.random()*100}vw;top:-20px;opacity:${0.6 + Math.random()*0.4}`;
         container.appendChild(p);
