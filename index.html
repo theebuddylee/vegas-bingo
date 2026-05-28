@@ -117,6 +117,25 @@
       background: rgba(255,255,255,0.15);
       color: #fde047;
     }
+
+    /* 4-player corner marks when in a room */
+    .room-corner {
+      position: absolute;
+      width: 13px;
+      height: 13px;
+      font-size: 8px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 2px;
+      color: #111827;
+      line-height: 1;
+    }
+    .room-corner.p1 { top: 3px; left: 3px; background: #facc15; }
+    .room-corner.p2 { top: 3px; right: 3px; background: #c026ff; color: white; }
+    .room-corner.p3 { bottom: 3px; left: 3px; background: #22c55e; }
+    .room-corner.p4 { bottom: 3px; right: 3px; background: #ef4444; color: white; }
     
     .bingo-cell.center {
       background: linear-gradient(135deg, #581c87 0%, #7e22ce 100%);
@@ -447,6 +466,25 @@
     // ==================== ROOM STATE ====================
     let currentRoomCode = null;
     let roomListener = null;
+    let currentPlayerSlot = null;   // "p1", "p2", "p3", or "p4" when in a room
+    let roomPlayers = {};           // { p1: {name: "Alice"}, p2: {...} }
+
+    // Helper to create safe Firebase keys from challenge text
+    function getSafeKey(text) {
+      return btoa(unescape(encodeURIComponent(text))).replace(/=/g, '');
+    }
+
+    // Reverse lookup: from safe key back to text (we'll store the original text too)
+    function getTextFromSafeKey(safeKey, squaresData) {
+      for (let k in squaresData) {
+        if (squaresData[k] && squaresData[k].text) {
+          if (getSafeKey(squaresData[k].text) === safeKey) {
+            return squaresData[k].text;
+          }
+        }
+      }
+      return null;
+    }
 
     // ==================== DATA ====================
     const ORIGINAL_CHALLENGES = [
@@ -650,6 +688,7 @@
       grid.className = 'grid grid-cols-5 gap-px p-1.5 bg-slate-800';
 
       currentCard.forEach((text, index) => {
+        // For rooms we use position-based marks (index), even if cards are different
         const state = squareState[index] || {};
         const isMarked = !!state.markedBy;
         const isCenter = index === 12;
@@ -671,7 +710,15 @@
           cell.appendChild(attr);
         }
 
-        // Photo thumbnail
+        // Room corner indicators (4 players)
+        if (currentRoomCode && isMarked && state.player) {
+          const corner = document.createElement('div');
+          corner.className = `room-corner ${state.player}`;
+          corner.textContent = state.player.replace('p', '');
+          cell.appendChild(corner);
+        }
+
+        // Photo thumbnail (local only)
         if (state.photo) {
           const img = document.createElement('img');
           img.className = 'photo-thumb';
@@ -712,11 +759,18 @@
         delete squareState[index];
         cellEl.classList.remove('marked');
       } else {
-        // Mark it
-        squareState[index] = {
+        // Mark - store by grid position (index)
+        const markData = {
           markedBy: playerName || "Anonymous",
           ts: Date.now()
         };
+
+        if (currentRoomCode && currentPlayerSlot) {
+          markData.player = currentPlayerSlot;
+          markData.name = roomPlayers[currentPlayerSlot]?.name || playerName;
+        }
+
+        squareState[index] = markData;
         cellEl.classList.add('marked');
 
         // tiny celebration pop
@@ -725,10 +779,10 @@
           if (cellEl) cellEl.style.transform = '';
         }, 120);
 
-        // On first mark, gently offer to add photo evidence
-        if (!isCenter && !squareState[index].photo) {
+        // Photo prompt only when NOT in a room (local memory log only)
+        if (!currentRoomCode && !isCenter && !squareState[index].photo) {
           setTimeout(() => {
-            if (confirm("Add photo evidence for this square now? (or right-click/long-press the square anytime)")) {
+            if (confirm("Add photo evidence for this square now? (local only)")) {
               promptPhotoForSquare(index, cellEl);
             }
           }, 420);
@@ -739,15 +793,15 @@
       updateMarkedCount();
       checkBingo(false);
 
-      // === LIVE ROOM SYNC ===
+      // === LIVE ROOM SYNC - by grid position ===
       if (currentRoomCode && window.db) {
         const state = squareState[index];
-        const roomSquaresRef = window.db.ref(`rooms/${currentRoomCode}/squares/${index}`);
+        const roomMarkRef = window.db.ref(`rooms/${currentRoomCode}/marks/${index}`);
 
         if (state && state.markedBy) {
-          roomSquaresRef.set(state).catch(console.error);
+          roomMarkRef.set(state).catch(console.error);
         } else {
-          roomSquaresRef.remove().catch(console.error);
+          roomMarkRef.remove().catch(console.error);
         }
       }
     }
@@ -766,11 +820,12 @@
         reader.onload = (ev) => {
           const dataUrl = ev.target.result;
 
-          if (!squareState[index]) {
-            squareState[index] = { markedBy: playerName || "Anonymous", ts: Date.now() };
+          const text = currentCard[index];
+          if (!squareState[text]) {
+            squareState[text] = { markedBy: playerName || "Anonymous", ts: Date.now(), text: text };
           }
-          squareState[index].photo = dataUrl;
-          squareState[index].markedBy = squareState[index].markedBy || playerName || "Anonymous";
+          squareState[text].photo = dataUrl;
+          squareState[text].markedBy = squareState[text].markedBy || playerName || "Anonymous";
 
           saveToLocalStorage();
           renderGrid(); // re-render to show thumbnail
@@ -824,8 +879,15 @@
     function updateMarkedCount() {
       const el = document.getElementById('marked-count');
       if (!el) return;
-      const count = Object.keys(squareState).filter(k => squareState[k] && squareState[k].markedBy).length;
-      el.textContent = `${count} / 25 MARKED`;
+      // Count unique marked challenges (text keys or old index keys)
+      const markedTexts = new Set();
+      for (let k in squareState) {
+        if (squareState[k] && squareState[k].markedBy) {
+          const text = squareState[k].text || k;
+          markedTexts.add(text);
+        }
+      }
+      el.textContent = `${markedTexts.size} / 25 MARKED`;
     }
 
     function updateCardInfo(seed = null) {
@@ -873,7 +935,12 @@
       if (currentRoomCode && status && codeEl) {
         status.classList.remove('hidden');
         status.classList.add('flex');
-        codeEl.textContent = currentRoomCode;
+        let display = currentRoomCode;
+        if (currentPlayerSlot) {
+          const num = currentPlayerSlot.replace('p', '');
+          display += ` (P${num})`;
+        }
+        codeEl.textContent = display;
       } else if (status) {
         status.classList.add('hidden');
         status.classList.remove('flex');
@@ -884,28 +951,28 @@
       const code = generateRoomCode();
       const roomRef = db.ref('rooms/' + code);
 
+      const playerName = document.getElementById('player-name')?.value.trim() || "Player 1";
+
       try {
-        // We only save the shared marks (squares), NOT the card.
-        // This lets everyone keep their own personal card while sharing progress.
         await roomRef.set({
           createdAt: Date.now(),
-          squares: Object.fromEntries(
-            Object.entries(squareState).map(([k, v]) => [k, v])
-          )
+          players: {
+            p1: { name: playerName }
+          },
+          marks: {}   // position index → { player: "p1", name: "...", ts: ... }
         });
 
         currentRoomCode = code;
-        updateRoomUI();
+        currentPlayerSlot = "p1";
+        roomPlayers = { p1: { name: playerName } };
 
-        // Start listening for changes from others
+        updateRoomUI();
         listenToRoom(code);
 
-        alert(`Room created! Code: ${code}\n\n` +
-              `Everyone in this room will share marks, but you can each use your own card.\n` +
-              `Generate a card now (or keep the one you have).`);
+        alert(`Room created! Code: ${code}\n\nYou are Player 1.\nUp to 3 more people can join.`);
       } catch (err) {
         console.error(err);
-        alert("Failed to create room. Check your internet connection.");
+        alert("Failed to create room.");
       }
     }
 
@@ -933,25 +1000,52 @@
 
       roomRef.once('value').then(snapshot => {
         const data = snapshot.val();
-        if (!data) {
-          alert("Room not found. Double-check the code.");
+        if (!data || !data.players) {
+          alert("Room not found or invalid.");
           leaveRoom();
           return;
         }
 
-        // IMPORTANT: We do NOT load a card from the room.
-        // Everyone keeps their own card. We only sync the marks (squares).
-        squareState = data.squares || {};
+        const playerCount = Object.keys(data.players).length;
+        if (playerCount >= 4) {
+          alert("This room is full (max 4 players).");
+          leaveRoom();
+          return;
+        }
+
+        // Assign next available slot
+        const playerName = document.getElementById('player-name')?.value.trim() || "Player 1";
+        let slot = null;
+        for (let i = 1; i <= 4; i++) {
+          const p = "p" + i;
+          if (!data.players[p]) {
+            slot = p;
+            break;
+          }
+        }
+
+        if (!slot) {
+          alert("Could not join - room full.");
+          leaveRoom();
+          return;
+        }
+
+        // Claim the slot
+        roomRef.child("players/" + slot).set({ name: playerName });
+
+        currentPlayerSlot = slot;
+        roomPlayers = data.players || {};
+        roomPlayers[slot] = { name: playerName };
+
+        // Load existing position-based marks
+        squareState = data.marks || {};
 
         renderGrid();
         updateMarkedCount();
-
-        // Now start listening for live updates
         listenToRoom(currentRoomCode);
 
-        alert(`Joined room ${currentRoomCode}!\n\n` +
-              `Marks from everyone in the room will appear on your card. ` +
-              `You can generate your own card if you want.`);
+        const slotNumber = slot.replace("p", "");
+        alert(`Joined room ${currentRoomCode} as Player ${slotNumber}.\n\nMarks are shared by grid position.`);
       }).catch(err => {
         console.error(err);
         alert("Failed to join room.");
@@ -968,16 +1062,21 @@
         const data = snapshot.val();
         if (!data) return;
 
-        // Only sync the shared marks (squares). Cards are personal.
-        const incomingSquares = data.squares || {};
+        // Update players list
+        if (data.players) {
+          roomPlayers = data.players;
+        }
+
+        // Sync position-based marks (index keys)
+        const incomingMarks = data.marks || {};
         let changed = false;
 
-        for (let idx in incomingSquares) {
-          const newState = incomingSquares[idx];
-          const current = squareState[idx];
+        for (let pos in incomingMarks) {
+          const newMark = incomingMarks[pos];
+          const current = squareState[pos];
 
-          if (!current || current.ts < (newState.ts || 0)) {
-            squareState[idx] = newState;
+          if (!current || current.ts < (newMark.ts || 0)) {
+            squareState[pos] = newMark;
             changed = true;
           }
         }
@@ -996,6 +1095,8 @@
       }
 
       currentRoomCode = null;
+      currentPlayerSlot = null;
+      roomPlayers = {};
       updateRoomUI();
 
       // Go back to local-only mode
@@ -1020,7 +1121,12 @@
       const wins = [];
       const size = 5;
 
-      const isCompleted = (i) => !!(squareState[i] && squareState[i].markedBy);
+      const isCompleted = (i) => {
+        const text = currentCard[i];
+        const byText = squareState[text];
+        const byIndex = squareState[i];
+        return !!( (byText && byText.markedBy) || (byIndex && byIndex.markedBy) );
+      };
 
       // Rows
       for (let r = 0; r < size; r++) {
