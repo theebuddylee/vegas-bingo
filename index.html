@@ -59,8 +59,8 @@
       align-items: center;
       justify-content: center;
       padding: 6px 4px;
-      font-size: 10px;
-      line-height: 1.2;
+      font-size: 11px;
+      line-height: 1.25;
       text-align: center;
       cursor: pointer;
       user-select: none;
@@ -188,6 +188,14 @@
     
     .bingo-cell:active {
       transform: scale(0.97);
+    }
+
+    /* Bigger text on mobile for readability */
+    @media (max-width: 600px) {
+      .bingo-cell {
+        font-size: 12.5px;
+        padding: 5px 3px;
+      }
     }
     
     .vegas-bg {
@@ -653,6 +661,7 @@
 
       saveToLocalStorage(seed);
       window.bingoCelebratedThisCard = false;
+      window.blackoutCelebratedThisCard = false;
       renderGrid();
       updateCardInfo(seed);
     }
@@ -820,9 +829,14 @@
       saveToLocalStorage();
       updateMarkedCount();
 
-      // Only check for bingo celebration on marking actions in rooms, and only if we haven't already celebrated a bingo this card
-      if (!currentRoomCode || !window.bingoCelebratedThisCard) {
+      // Check for regular bingo lines (with guard against repeated celebrations)
+      if (!window.bingoCelebratedThisCard) {
         checkBingo(false);
+      }
+
+      // Separate blackout check — can happen independently of new lines
+      if (currentRoomCode && currentPlayerSlot && !window.blackoutCelebratedThisCard) {
+        checkForBlackout();
       }
     }
 
@@ -893,6 +907,7 @@
       if (!confirm("Clear all marks and photos on this card?")) return;
       squareState = {};
       window.bingoCelebratedThisCard = false;
+      window.blackoutCelebratedThisCard = false;
       saveToLocalStorage();
       renderGrid();
     }
@@ -1122,7 +1137,11 @@
       currentPlayerSlot = null;
       roomPlayers = {};
       window.bingoCelebratedThisCard = false;
+      window.blackoutCelebratedThisCard = false;
       updateRoomUI();
+
+      // Re-render grid without room-specific corner logic
+      renderGrid();
 
       // Go back to local-only mode
       alert("Left the room. You're now back in local mode.");
@@ -1192,6 +1211,29 @@
         alert("Not yet... keep hustling!");
       }
       return false;
+    }
+
+    function checkForBlackout() {
+      if (!currentRoomCode || !currentPlayerSlot) return;
+
+      const totalMarkedByMe = Object.keys(squareState).filter(k => {
+        return squareState[k] && squareState[k][currentPlayerSlot];
+      }).length;
+
+      if (totalMarkedByMe >= 25) {
+        window.blackoutCelebratedThisCard = true;
+        // Show a dedicated blackout celebration
+        const overlay = document.getElementById('win-overlay');
+        const title = document.getElementById('win-title');
+        const subtitle = document.getElementById('win-subtitle');
+
+        overlay.style.display = 'flex';
+        title.textContent = 'BLACKOUT!';
+        title.style.color = '#facc15';
+        subtitle.textContent = 'You completed the entire card. Absolute legend.';
+
+        launchConfetti(300); // Big celebration
+      }
     }
 
     function showWinOverlay(wins, isBlackout = false) {
