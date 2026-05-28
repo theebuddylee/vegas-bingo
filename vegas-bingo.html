@@ -1,0 +1,1396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VEGAS BINGO • Trip Edition</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <!-- Firebase (for live group rooms) -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&amp;display=swap');
+    
+    :root {
+      --gold: #facc15;
+      --purple: #6b21a8;
+    }
+    
+    body {
+      background: linear-gradient(180deg, #0f0a1f 0%, #1a1433 100%);
+    }
+    
+    .vegas-gold {
+      color: #facc15;
+      text-shadow: 0 0 10px rgba(250, 204, 21, 0.5);
+    }
+    
+    .neon-purple {
+      text-shadow: 0 0 8px #c026ff, 0 0 16px #c026ff;
+    }
+    
+    .bingo-card {
+      background: #111827;
+      border: 8px solid #facc15;
+      box-shadow: 0 0 0 8px #1f2937,
+                  0 25px 50px -12px rgb(0 0 0 / 0.4);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    
+    .bingo-header {
+      background: linear-gradient(90deg, #581c87, #6b21a8, #581c87);
+      color: #facc15;
+      font-family: "Press Start 2P", system-ui;
+      letter-spacing: 4px;
+      text-shadow: 3px 3px 0 #000;
+    }
+    
+    .bingo-cell {
+      background: #ffffff;
+      color: #111827;
+      border: 3px solid #d1d5db;
+      transition: all 0.1s cubic-bezier(0.4, 0, 0.2, 1);
+      min-height: 78px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 4px;
+      font-size: 10px;
+      line-height: 1.2;
+      text-align: center;
+      cursor: pointer;
+      user-select: none;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .bingo-cell:hover {
+      background: #f3f4f6;
+      transform: scale(1.015);
+      z-index: 10;
+    }
+    
+    .bingo-cell.marked {
+      background: #111827;
+      color: #f9fafb;
+      border-color: #facc15;
+      font-weight: 600;
+    }
+    
+    .bingo-cell.marked:hover {
+      background: #1f2937;
+    }
+    
+    .bingo-cell .photo-thumb {
+      position: absolute;
+      bottom: 3px;
+      right: 3px;
+      width: 22px;
+      height: 22px;
+      border-radius: 4px;
+      border: 1px solid #facc15;
+      object-fit: cover;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    }
+    
+    .bingo-cell .attribution {
+      position: absolute;
+      bottom: 2px;
+      left: 4px;
+      font-size: 8px;
+      background: rgba(0,0,0,0.6);
+      color: #facc15;
+      padding: 0 3px;
+      border-radius: 2px;
+      line-height: 1;
+      max-width: 70%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    
+    .bingo-cell.marked .attribution {
+      background: rgba(255,255,255,0.15);
+      color: #fde047;
+    }
+    
+    .bingo-cell.center {
+      background: linear-gradient(135deg, #581c87 0%, #7e22ce 100%);
+      color: #fefce8;
+      border-color: #c026ff;
+      font-weight: 700;
+    }
+    
+    .bingo-cell.center:hover {
+      background: linear-gradient(135deg, #6b21a8 0%, #a855f7 100%);
+    }
+    
+    .bingo-cell.center.marked {
+      background: linear-gradient(135deg, #4c1d95 0%, #6b21a8 100%);
+      border-color: #facc15;
+      color: #fefce8;
+    }
+    
+    .bingo-label {
+      font-family: "Press Start 2P", system-ui;
+      font-size: 13px;
+      letter-spacing: 2px;
+    }
+    
+    /* challenge text now uses native contrast on white/black cells */
+    
+    .slot-machine {
+      animation: slot-spin 0.6s cubic-bezier(0.23, 1.0, 0.32, 1);
+    }
+    
+    @keyframes slot-spin {
+      0% { transform: translateY(-40px); opacity: 0; }
+      30% { transform: translateY(8px); }
+      60% { transform: translateY(-4px); }
+      100% { transform: translateY(0); opacity: 1; }
+    }
+    
+    .bingo-win {
+      animation: bingo-pop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    
+    .neon-button {
+      transition: all 0.1s ease;
+    }
+    
+    .neon-button:hover {
+      box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.3);
+      transform: translateY(-1px);
+    }
+    
+    .bingo-cell:active {
+      transform: scale(0.97);
+    }
+    
+    .vegas-bg {
+      background-image: 
+        radial-gradient(circle at 25% 20%, rgba(250,204,21,0.06) 0%, transparent 50%),
+        radial-gradient(circle at 75% 80%, rgba(192,38,255,0.05) 0%, transparent 50%);
+    }
+  </style>
+</head>
+<body class="min-h-screen text-slate-200">
+  <div class="max-w-5xl mx-auto px-4 py-6">
+    <!-- Header -->
+    <div class="flex flex-col items-center text-center mb-6">
+      <div class="flex items-center gap-x-3 mb-2">
+        <i class="fa-solid fa-dice text-5xl text-yellow-400"></i>
+        <h1 class="text-6xl font-black tracking-tighter">
+          <span class="vegas-gold">VEGAS</span>
+          <span class="text-white">BINGO</span>
+        </h1>
+        <i class="fa-solid fa-dice text-5xl text-yellow-400"></i>
+      </div>
+      <p class="text-xl text-purple-300 font-medium tracking-wide">What happens on the card, stays on the card</p>
+      <div class="mt-2 text-xs uppercase tracking-[3px] text-slate-400 flex items-center gap-x-2">
+        <div class="h-px w-8 bg-slate-600"></div>
+        <span>TRIP EDITION</span>
+        <div class="h-px w-8 bg-slate-600"></div>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="flex flex-wrap gap-3 justify-center mb-6">
+      <!-- Generate Random -->
+      <button onclick="generateRandomCard()"
+              class="neon-button flex items-center gap-x-2 px-6 py-3 bg-yellow-400 hover:bg-yellow-300 active:bg-yellow-500 text-slate-950 font-bold rounded-2xl shadow-lg text-sm">
+        <i class="fa-solid fa-sync-alt"></i>
+        <span>NEW RANDOM CARD</span>
+      </button>
+
+      <!-- Seed controls -->
+      <div class="flex items-center gap-x-2 bg-slate-900 border border-slate-700 rounded-2xl px-2 py-1.5">
+        <input id="seed-input" type="text" placeholder="Trip name or year (e.g. Smith2026)" 
+               class="bg-slate-950 border border-slate-700 text-sm px-4 py-2 rounded-xl w-56 focus:outline-none focus:border-yellow-400 placeholder:text-slate-500"
+               onkeyup="if (event.key === 'Enter') generateSeededCard()">
+        <button onclick="generateSeededCard()"
+                class="px-5 py-2 text-sm font-semibold rounded-xl bg-purple-600 hover:bg-purple-500 active:bg-purple-700 flex items-center gap-x-2">
+          <i class="fa-solid fa-link"></i>
+          <span>GENERATE SEEDED</span>
+        </button>
+      </div>
+
+      <button onclick="shareCard()" 
+              class="neon-button flex items-center gap-x-2 px-5 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-sm font-semibold rounded-2xl">
+        <i class="fa-solid fa-share-alt"></i>
+        <span>SHARE THIS CARD</span>
+      </button>
+    </div>
+
+    <!-- Live Room Controls -->
+    <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 mb-6">
+      <div class="flex items-center gap-x-2 bg-slate-900 border border-purple-600/50 rounded-2xl px-3 py-1.5">
+        <button onclick="createRoom()" 
+                class="px-4 py-2 text-sm font-semibold bg-purple-600 hover:bg-purple-500 active:bg-purple-700 rounded-xl flex items-center gap-x-2">
+          <i class="fa-solid fa-plus"></i>
+          <span>Create Room</span>
+        </button>
+
+        <div class="flex items-center">
+          <input id="room-code-input" type="text" placeholder="Enter code (e.g. VEGAS42)" 
+                 class="bg-slate-950 border border-slate-600 text-sm px-3 py-2 rounded-l-xl w-40 focus:outline-none focus:border-purple-400 uppercase font-mono tracking-widest"
+                 onkeyup="if (event.key === 'Enter') joinRoomFromInput()">
+          <button onclick="joinRoomFromInput()" 
+                  class="px-4 py-2 text-sm font-semibold bg-slate-700 hover:bg-slate-600 rounded-r-xl border border-slate-600">
+            Join
+          </button>
+        </div>
+      </div>
+
+      <div id="room-status" class="hidden items-center gap-x-2 bg-slate-900 border border-emerald-600/50 rounded-2xl px-4 py-1.5 text-sm">
+        <span class="text-emerald-400">In Room:</span>
+        <span id="current-room-code" class="font-mono font-bold text-emerald-300 tracking-widest"></span>
+        <button onclick="leaveRoom()" 
+                class="ml-2 px-3 py-1 text-xs bg-red-600/80 hover:bg-red-600 rounded-lg">Leave</button>
+      </div>
+    </div>
+
+    <!-- Player name + Card info -->
+    <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 mb-4">
+      <div class="flex items-center gap-x-2 bg-slate-900 border border-slate-700 rounded-2xl px-3 py-1.5">
+        <label class="text-xs uppercase tracking-widest text-slate-400">You are</label>
+        <input id="player-name" type="text" value="Player 1" 
+               class="bg-slate-950 border border-slate-600 text-sm px-3 py-1 rounded-xl w-36 focus:outline-none focus:border-yellow-400 font-medium"
+               onchange="updatePlayerName()">
+      </div>
+
+      <div id="card-info" class="hidden inline-flex items-center gap-x-2 bg-slate-900 border border-slate-700 rounded-full px-4 py-1 text-sm">
+        <span class="text-yellow-400 font-mono text-xs tracking-widest" id="card-code"></span>
+        <span class="text-slate-400">•</span>
+        <span class="text-emerald-400 text-xs" id="marked-count">0 / 25 MARKED</span>
+      </div>
+    </div>
+
+    <!-- The Bingo Card -->
+    <div class="flex justify-center mb-8">
+      <div class="bingo-card w-full max-w-[620px]">
+        <!-- VEGAS Header -->
+        <div class="grid grid-cols-5 gap-px bg-slate-800 p-1">
+          <div class="bingo-header text-center py-2.5 text-2xl font-black tracking-[6px]">V</div>
+          <div class="bingo-header text-center py-2.5 text-2xl font-black tracking-[6px]">E</div>
+          <div class="bingo-header text-center py-2.5 text-2xl font-black tracking-[6px]">G</div>
+          <div class="bingo-header text-center py-2.5 text-2xl font-black tracking-[6px]">A</div>
+          <div class="bingo-header text-center py-2.5 text-2xl font-black tracking-[6px]">S</div>
+        </div>
+
+        <!-- 5x5 Grid -->
+        <div id="bingo-grid" 
+             class="grid grid-cols-5 gap-px p-1.5 bg-slate-800">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Action Bar -->
+    <div class="flex flex-wrap justify-center gap-x-3 gap-y-2 mb-8">
+      <button onclick="resetMarks()" 
+              class="px-4 py-2 text-sm bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-xl flex items-center gap-x-2">
+        <i class="fa-solid fa-eraser"></i>
+        <span>Clear All Marks</span>
+      </button>
+      <button onclick="checkBingo(true)" 
+              class="px-4 py-2 text-sm bg-emerald-600 hover:bg-emerald-500 border border-emerald-400 rounded-xl flex items-center gap-x-2 font-medium">
+        <i class="fa-solid fa-tachometer-alt"></i>
+        <span>CHECK FOR BINGO</span>
+      </button>
+      <button onclick="showAllChallenges()" 
+              class="px-4 py-2 text-sm bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-xl flex items-center gap-x-2">
+        <i class="fa-solid fa-list-ul"></i>
+        <span>View All 100 Challenges</span>
+      </button>
+      <button onclick="showCustomizeModal()" 
+              class="px-4 py-2 text-sm bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-xl flex items-center gap-x-2">
+        <i class="fa-solid fa-edit"></i>
+        <span>Customize List</span>
+      </button>
+    </div>
+
+    <!-- Instructions / Tips -->
+    <div class="max-w-2xl mx-auto bg-slate-900/60 border border-slate-700 rounded-3xl p-6 text-sm">
+      <div class="flex items-start gap-x-4">
+        <i class="fa-solid fa-info-circle mt-0.5 text-xl text-yellow-400"></i>
+        <div class="space-y-3 text-slate-300">
+          <div>
+            <strong class="text-yellow-300">How to play:</strong> Tap any square to mark it (turns black with white text + your name). 
+            First to complete a full line wins. The center Bellagio square is the traditional "free" space.
+          </div>
+          <div class="text-xs text-slate-400">
+            <strong>Photo evidence:</strong> After marking, you'll be prompted for a photo. Or <strong>right-click / long-press</strong> any square anytime to attach or replace a photo. Tap the small thumbnail to view it full-screen.
+          </div>
+          <div class="text-xs text-slate-400">
+            <strong>Group mode:</strong> Change the "You are" name field, then mark squares — attribution shows who completed what. 
+            For live syncing across phones, see the note at the very bottom of this file (Firebase setup).
+          </div>
+          <div class="text-xs text-slate-400">
+            Use the same seed phrase with your crew for identical cards. Everything auto-saves locally.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="text-center mt-8 text-[10px] text-slate-500 tracking-widest">
+      PORTED FROM THE LEGENDARY VEGAS_BINGO.XLS • 100 CHALLENGES • NO RULES, JUST VIBES
+    </div>
+
+    <!-- Live Group Upgrade Info -->
+    <div class="max-w-2xl mx-auto mt-10 bg-slate-900/70 border border-purple-700/50 rounded-3xl p-6 text-sm">
+      <div class="flex items-center gap-x-2 mb-3 text-purple-300">
+        <i class="fa-solid fa-users"></i>
+        <span class="font-semibold tracking-wide">LIVE GROUP MODE (across multiple phones)</span>
+      </div>
+      <div class="text-slate-300 text-xs leading-relaxed space-y-2">
+        <p>The current version gives you great local group play (everyone can use their own phone, switch names, attach photos, and show each other the screen).</p>
+        <p><strong>For true real-time syncing</strong> (marks + photos appear instantly on everyone else's phone when someone completes a square):</p>
+        <ol class="list-decimal pl-4 space-y-1 mt-2">
+          <li>Create a free Firebase project at <a href="https://console.firebase.google.com" target="_blank" class="underline text-yellow-400">console.firebase.google.com</a></li>
+          <li>Enable Realtime Database + Storage (start in test mode)</li>
+          <li>Copy your config (the object with apiKey, projectId, etc.)</li>
+          <li>I can wire it in for you in &lt;5 minutes — just say the word and paste your config here. Rooms will use short codes like "VEGAS42".</li>
+        </ol>
+        <p class="text-[10px] text-slate-400 mt-3">This keeps everything in one file while giving you proper live collaboration with photo uploads to the cloud.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- All Challenges Modal -->
+  <div id="challenges-modal" onclick="if (event.target.id === 'challenges-modal') hideAllChallenges()" 
+       class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div onclick="event.stopImmediatePropagation()" 
+         class="bg-slate-900 border border-slate-700 rounded-3xl max-w-2xl w-full max-h-[85vh] flex flex-col">
+      <div class="p-5 border-b border-slate-700 flex items-center justify-between">
+        <div>
+          <div class="font-bold text-xl">All Challenges</div>
+          <div class="text-xs text-slate-400">100 total • ones currently on your card are highlighted</div>
+        </div>
+        <button onclick="hideAllChallenges()" class="text-3xl leading-none text-slate-400 hover:text-white">&times;</button>
+      </div>
+      
+      <div class="p-5 border-b border-slate-700">
+        <input id="challenge-search" type="text" placeholder="Search challenges..." 
+               oninput="filterChallenges()" 
+               class="w-full bg-slate-950 border border-slate-700 px-4 py-2.5 rounded-2xl text-sm focus:outline-none focus:border-yellow-400">
+      </div>
+      
+      <div class="overflow-auto p-5 flex-1 text-sm" id="challenges-list">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Customize Modal -->
+  <div id="customize-modal" onclick="if (event.target.id === 'customize-modal') hideCustomizeModal()" 
+       class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div onclick="event.stopImmediatePropagation()" 
+         class="bg-slate-900 border border-slate-700 rounded-3xl max-w-lg w-full">
+      <div class="p-5 border-b border-slate-700 flex justify-between items-center">
+        <div class="font-bold text-lg">Customize Challenge List</div>
+        <button onclick="hideCustomizeModal()" class="text-3xl leading-none text-slate-400 hover:text-white">&times;</button>
+      </div>
+      <div class="p-5">
+        <p class="text-xs text-slate-400 mb-2">One challenge per line. Changes are saved in your browser.</p>
+        <textarea id="custom-list" rows="12" 
+                  class="w-full font-mono text-xs bg-slate-950 border border-slate-700 p-3 rounded-2xl focus:outline-none focus:border-yellow-400"></textarea>
+      </div>
+      <div class="p-5 border-t border-slate-700 flex gap-x-3 justify-end">
+        <button onclick="resetToOriginalList()" 
+                class="px-4 py-2 text-sm rounded-xl border border-slate-600 hover:bg-slate-800">Reset to Original 100</button>
+        <button onclick="applyCustomList()" 
+                class="px-6 py-2 text-sm font-semibold bg-yellow-400 hover:bg-yellow-300 text-black rounded-xl">Apply &amp; Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bingo Win Overlay -->
+  <div id="win-overlay" onclick="hideWinOverlay()" 
+       class="hidden fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-6">
+    <div class="text-center max-w-md">
+      <div class="text-[92px] leading-none mb-1">🎰</div>
+      <div class="text-7xl font-black tracking-tighter text-yellow-400 mb-1 bingo-win">BINGO!</div>
+      <div class="text-2xl text-purple-300 mb-6">You did it, legend.</div>
+      
+      <div class="flex justify-center gap-3">
+        <button onclick="hideWinOverlay(); resetMarks()" 
+                class="px-8 py-3 bg-white/10 hover:bg-white/20 rounded-2xl font-semibold">Clear Marks</button>
+        <button onclick="hideWinOverlay(); generateRandomCard()" 
+                class="px-8 py-3 bg-yellow-400 hover:bg-yellow-300 active:bg-yellow-500 text-black font-bold rounded-2xl">New Card</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ==================== FIREBASE CONNECTION ====================
+    const firebaseConfig = {
+      apiKey: "AIzaSyA6gQ7JPSg2-df_IV4NVd6dMo0Zbvp02M0",
+      authDomain: "vegasbingo.firebaseapp.com",
+      databaseURL: "https://vegasbingo-default-rtdb.firebaseio.com",
+      projectId: "vegasbingo",
+      storageBucket: "vegasbingo.firebasestorage.app",
+      messagingSenderId: "643900300103",
+      appId: "1:643900300103:web:17307c28b59a607a4fca62"
+    };
+
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    window.db = db; // Make it available globally for later room features
+    console.log("%c[Firebase] Connected to Realtime Database", "color:#22c55e");
+
+    // ==================== ROOM STATE ====================
+    let currentRoomCode = null;
+    let roomListener = null;
+
+    // ==================== DATA ====================
+    const ORIGINAL_CHALLENGES = [
+      "Imbibe a drink you've never had (6oz min)",
+      "Eat a food labeled Spicy",
+      "Drink out of something at least 2ft tall",
+      "Pic with Elvis or Bubblebee",
+      "Try a flavor of gelato you've never had before",
+      "Sing along to MJ music not played by you",
+      "Picture with a Cirque performer",
+      "Picture with a Comedian",
+      "See a Magic trick",
+      "Rub a Budda",
+      "Get your feet wet (water cannot be brought to or spilled on the feet)",
+      "Take a picture of you with at least $1 million in it",
+      "Lose to a 21",
+      "Win $10 or more",
+      "Slotzilla",
+      "Film part of the Fremont Street Experience",
+      "Picture of the lobby ceiling in the Wynn",
+      "Throw craps",
+      "Play a hand of Pai Gow",
+      "Eat a Pot Sticker",
+      "All you can eat anything",
+      "Bet on a horse race",
+      "Get a Bonus on any slot machine",
+      "See Red Rock canyon",
+      "Congratulate a bride or groom",
+      "Wish someone a happy birthday on their birthday",
+      "Picture with shoe larger than size 15",
+      "Try on something worth more than $3k",
+      "Picture with you and the Sphere in it",
+      "Jump off the Strat",
+      "Look out a window more than 40 stories up",
+      "Pic with raiders gear on",
+      "Sit in a Slingshot, Lambo or Ferrari",
+      "Eat something with wasabi",
+      "Buy a hot dog for $2 or less",
+      "Give a stranger a dollar",
+      "Buy a bottle of water for under $2",
+      "Pic with a living statue",
+      "Picture of someone barefoot before 9p",
+      "Quote a movie in conversation",
+      "Spot a hamstring tatoo",
+      "Start a Slow clap with at least 4 people",
+      "Overhear someone say \"What happens in Vegas...\"",
+      "Ask someone wearing a conference badge their name",
+      "Pic with a Show Girl",
+      "Kiss Caesar",
+      "Take a pic with someone elses phone/camera",
+      "Get a Fortune",
+      "Listen to Live DJ music",
+      "Eat a Vegas Roll (sushi)",
+      "Eat a Pink Box or Krispy Kreme Donut",
+      "Eat something from Secret Pizza(Cosmo)",
+      "Touch a Poker Table at Binions",
+      "See \"VIVA LAS VEGAS\" in print",
+      "See a Topless Man not at a pool",
+      "See pasties",
+      "See someone wearing assless chaps",
+      "See someone wearing 6 inch or higher heals",
+      "See two people in same group with selfie sticks",
+      "See someone reading a book",
+      "Photobomb someone",
+      "Speak a foriegn language to a dealer",
+      "Find a payphone",
+      "Touch something made of gold",
+      "Picture with someone in a white gown",
+      "See a live Cat",
+      "Pet a Dog",
+      "Spot a MAGA hat",
+      "Dance with a stranger",
+      "Take a Keno card",
+      "Fly a paper airplane in a casino",
+      "Eat something claiming to be Tapas",
+      "Yell \"Yahtzee\" as loud as you can in a casino",
+      "Stick your head out of a moving Limo",
+      "See a shirt design with a misspelled word",
+      "See a neon sign with a letter out",
+      "Eat an In and Out burger",
+      "Drink a Shake with Booze, cake or candy in it",
+      "Sing Happy Birthday to someone",
+      "Ride a mechanical bull",
+      "Ride the monorail or the Duece",
+      "See a shirt misrepresenting what \"FBI\" means",
+      "See and Oompa Loompa",
+      "Spin a Wheel",
+      "See a Camo Hat",
+      "Eat something besides sushi with chopsticks",
+      "Steal 3 pens",
+      "Get someone not in your party to take a bite of your food",
+      "Spot a lasso",
+      "Lick a person not in your party",
+      "Ask a stranger where they are from and pretend you are also from there",
+      "Hump a cow",
+      "Drink a liter of water in under 15 seconds",
+      "Find someone with mismatched eyes",
+      "Spot a tatoo of someones name",
+      "Get a tatoo",
+      "See a live monkey, parrot or tiger",
+      "Picture with a wax statue",
+      "Spot a Bachelorette party with more than 10 women",
+      "Hit a golf ball"
+    ];
+
+    const CENTER_CHALLENGE = "SEE THE BELLAGIO FOUNTAIN SHOW";
+
+    let challenges = [...ORIGINAL_CHALLENGES];
+    let currentCard = []; // 25 items, index 12 is always CENTER
+    // Rich per-square state: { [index]: { markedBy: string, photo?: string (base64), ts?: number } }
+    let squareState = {}; 
+    let playerName = "Player 1";
+
+    // ==================== SEEDED RNG ====================
+    function cyrb128(str) {
+      let h1 = 1779033703, h2 = 3144134277, h3 = 1013904242, h4 = 2773480762;
+      for (let i = 0, k; i < str.length; i++) {
+        k = str.charCodeAt(i);
+        h1 = h2 ^ Math.imul(h1 ^ k, 597399067);
+        h2 = h3 ^ Math.imul(h2 ^ k, 2869860233);
+        h3 = h4 ^ Math.imul(h3 ^ k, 951274213);
+        h4 = h1 ^ Math.imul(h4 ^ k, 2716044179);
+      }
+      h1 = Math.imul(h3 ^ (h1 >>> 18), 597399067);
+      h2 = Math.imul(h4 ^ (h2 >>> 22), 2869860233);
+      h3 = Math.imul(h1 ^ (h3 >>> 17), 951274213);
+      h4 = Math.imul(h2 ^ (h4 >>> 19), 2716044179);
+      return [(h1 ^ h2 ^ h3 ^ h4) >>> 0, (h2 ^ h1) >>> 0, (h3 ^ h1) >>> 0, (h4 ^ h1) >>> 0];
+    }
+
+    function mulberry32(a) {
+      return function() {
+        let t = a += 0x6D2B79F5;
+        t = Math.imul(t ^ t >>> 15, t | 1);
+        t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+      }
+    }
+
+    function seededShuffle(array, seedStr) {
+      const rng = mulberry32(cyrb128(seedStr)[0]);
+      const arr = array.slice();
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    // ==================== CARD GENERATION ====================
+    function generateCard(seed = null) {
+      // Note: While in a room, you can still generate your own personal card.
+      // Only the marks (completed squares) are shared with the room.
+      let pool = challenges.slice();
+      
+      let shuffled;
+      if (seed && seed.trim().length > 0) {
+        shuffled = seededShuffle(pool, seed.trim());
+        document.getElementById('seed-input').value = seed.trim();
+      } else {
+        // pure random
+        shuffled = pool.sort(() => Math.random() - 0.5);
+      }
+
+      // Take first 24, insert center at position 12 (middle)
+      const selected = shuffled.slice(0, 24);
+      currentCard = [
+        ...selected.slice(0, 12),
+        CENTER_CHALLENGE,
+        ...selected.slice(12)
+      ];
+
+      squareState = {};
+      
+      // If center should start marked (like traditional free space), uncomment:
+      // squareState[12] = { markedBy: playerName, ts: Date.now() };
+
+      saveToLocalStorage(seed);
+      renderGrid();
+      updateCardInfo(seed);
+    }
+
+    function generateRandomCard() {
+      document.getElementById('seed-input').value = '';
+      generateCard(null);
+    }
+
+    function generateSeededCard() {
+      const seed = document.getElementById('seed-input').value.trim();
+      if (!seed) {
+        alert("Enter a seed phrase (e.g. your last name + year) for consistent cards across the group.");
+        return;
+      }
+      generateCard(seed);
+    }
+
+    // ==================== RENDERING ====================
+    function renderGrid() {
+      const grid = document.getElementById('bingo-grid');
+      grid.innerHTML = '';
+      grid.className = 'grid grid-cols-5 gap-px p-1.5 bg-slate-800';
+
+      currentCard.forEach((text, index) => {
+        const state = squareState[index] || {};
+        const isMarked = !!state.markedBy;
+        const isCenter = index === 12;
+
+        const cell = document.createElement('div');
+        cell.className = `bingo-cell ${isCenter ? 'center' : ''} ${isMarked ? 'marked' : ''}`;
+        
+        // Main text
+        const span = document.createElement('span');
+        span.className = 'px-1 leading-tight';
+        span.textContent = text;
+        cell.appendChild(span);
+
+        // Attribution (who marked it)
+        if (isMarked && state.markedBy) {
+          const attr = document.createElement('div');
+          attr.className = 'attribution';
+          attr.textContent = state.markedBy;
+          cell.appendChild(attr);
+        }
+
+        // Photo thumbnail
+        if (state.photo) {
+          const img = document.createElement('img');
+          img.className = 'photo-thumb';
+          img.src = state.photo;
+          img.onclick = (e) => {
+            e.stopImmediatePropagation();
+            showPhotoModal(state.photo, text, state.markedBy);
+          };
+          cell.appendChild(img);
+        }
+
+        // Click handler - mark + optional photo prompt
+        cell.onclick = (e) => {
+          // If clicking the photo thumb we already handled above
+          if (e.target.tagName === 'IMG') return;
+          toggleMark(index, cell);
+        };
+
+        // Long-press / right-click to add or replace photo without toggling mark
+        cell.oncontextmenu = (e) => {
+          e.preventDefault();
+          promptPhotoForSquare(index, cell);
+        };
+        
+        grid.appendChild(cell);
+      });
+      
+      updateMarkedCount();
+    }
+
+    function toggleMark(index, cellEl) {
+      const isCenter = index === 12;
+      const current = squareState[index] || {};
+      const wasMarked = !!current.markedBy;
+
+      if (wasMarked) {
+        // Unmark
+        delete squareState[index];
+        cellEl.classList.remove('marked');
+      } else {
+        // Mark it
+        squareState[index] = {
+          markedBy: playerName || "Anonymous",
+          ts: Date.now()
+        };
+        cellEl.classList.add('marked');
+
+        // tiny celebration pop
+        cellEl.style.transform = 'scale(0.92)';
+        setTimeout(() => {
+          if (cellEl) cellEl.style.transform = '';
+        }, 120);
+
+        // On first mark, gently offer to add photo evidence
+        if (!isCenter && !squareState[index].photo) {
+          setTimeout(() => {
+            if (confirm("Add photo evidence for this square now? (or right-click/long-press the square anytime)")) {
+              promptPhotoForSquare(index, cellEl);
+            }
+          }, 420);
+        }
+      }
+      
+      saveToLocalStorage();
+      updateMarkedCount();
+      checkBingo(false);
+
+      // === LIVE ROOM SYNC ===
+      if (currentRoomCode && window.db) {
+        const state = squareState[index];
+        const roomSquaresRef = window.db.ref(`rooms/${currentRoomCode}/squares/${index}`);
+
+        if (state && state.markedBy) {
+          roomSquaresRef.set(state).catch(console.error);
+        } else {
+          roomSquaresRef.remove().catch(console.error);
+        }
+      }
+    }
+
+    function promptPhotoForSquare(index, cellEl) {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.capture = 'environment'; // prefer rear camera on phones
+
+      input.onchange = () => {
+        const file = input.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const dataUrl = ev.target.result;
+
+          if (!squareState[index]) {
+            squareState[index] = { markedBy: playerName || "Anonymous", ts: Date.now() };
+          }
+          squareState[index].photo = dataUrl;
+          squareState[index].markedBy = squareState[index].markedBy || playerName || "Anonymous";
+
+          saveToLocalStorage();
+          renderGrid(); // re-render to show thumbnail
+        };
+        reader.readAsDataURL(file);
+      };
+
+      input.click();
+    }
+
+    function showPhotoModal(dataUrl, challengeText, markedBy) {
+      const modal = document.createElement('div');
+      modal.className = 'fixed inset-0 bg-black/90 z-[70] flex items-center justify-center p-4';
+      modal.innerHTML = `
+        <div class="max-w-lg w-full bg-slate-900 rounded-3xl overflow-hidden border border-slate-700">
+          <div class="p-4 border-b border-slate-700 flex justify-between items-center">
+            <div>
+              <div class="text-yellow-400 text-sm font-semibold">${markedBy || 'Someone'}</div>
+              <div class="text-white text-xs opacity-70 line-clamp-2">${challengeText}</div>
+            </div>
+            <button class="text-3xl text-slate-400 hover:text-white leading-none" onclick="this.closest('.fixed').remove()">&times;</button>
+          </div>
+          <img src="${dataUrl}" class="w-full max-h-[70vh] object-contain bg-black" />
+          <div class="p-4 flex gap-3">
+            <button onclick="this.closest('.fixed').remove()" 
+                    class="flex-1 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-sm">Close</button>
+            <button onclick="downloadPhoto('${dataUrl}', '${challengeText.replace(/'/g, "\\'")}'); this.closest('.fixed').remove()" 
+                    class="flex-1 py-3 rounded-2xl bg-yellow-400 hover:bg-yellow-300 text-black font-semibold text-sm">Download Photo</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+    }
+
+    function downloadPhoto(dataUrl, filename) {
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = (filename || 'vegas-evidence').replace(/[^a-z0-9]/gi, '_').toLowerCase() + '.jpg';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+
+    function resetMarks() {
+      if (!confirm("Clear all marks and photos on this card?")) return;
+      squareState = {};
+      saveToLocalStorage();
+      renderGrid();
+    }
+
+    function updateMarkedCount() {
+      const el = document.getElementById('marked-count');
+      if (!el) return;
+      const count = Object.keys(squareState).filter(k => squareState[k] && squareState[k].markedBy).length;
+      el.textContent = `${count} / 25 MARKED`;
+    }
+
+    function updateCardInfo(seed = null) {
+      const info = document.getElementById('card-info');
+      const codeEl = document.getElementById('card-code');
+      
+      if (!currentCard.length) {
+        info.classList.add('hidden');
+        return;
+      }
+      
+      info.classList.remove('hidden');
+      
+      if (seed) {
+        codeEl.innerHTML = `<i class="fa-solid fa-link mr-1"></i>SEED: <span class="text-yellow-300">${seed}</span>`;
+      } else {
+        // Show a short hash of current card for reference
+        const hash = simpleHash(currentCard.join('|'));
+        codeEl.innerHTML = `CARD ID: <span class="text-yellow-300">${hash}</span>`;
+      }
+    }
+
+    function updatePlayerName() {
+      const input = document.getElementById('player-name');
+      if (!input) return;
+      playerName = input.value.trim() || "Player 1";
+      saveToLocalStorage();
+    }
+
+    // ==================== LIVE ROOM FUNCTIONS ====================
+
+    function generateRoomCode() {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let code = '';
+      for (let i = 0; i < 6; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return code;
+    }
+
+    function updateRoomUI() {
+      const status = document.getElementById('room-status');
+      const codeEl = document.getElementById('current-room-code');
+
+      if (currentRoomCode && status && codeEl) {
+        status.classList.remove('hidden');
+        status.classList.add('flex');
+        codeEl.textContent = currentRoomCode;
+      } else if (status) {
+        status.classList.add('hidden');
+        status.classList.remove('flex');
+      }
+    }
+
+    async function createRoom() {
+      const code = generateRoomCode();
+      const roomRef = db.ref('rooms/' + code);
+
+      try {
+        // We only save the shared marks (squares), NOT the card.
+        // This lets everyone keep their own personal card while sharing progress.
+        await roomRef.set({
+          createdAt: Date.now(),
+          squares: Object.fromEntries(
+            Object.entries(squareState).map(([k, v]) => [k, v])
+          )
+        });
+
+        currentRoomCode = code;
+        updateRoomUI();
+
+        // Start listening for changes from others
+        listenToRoom(code);
+
+        alert(`Room created! Code: ${code}\n\n` +
+              `Everyone in this room will share marks, but you can each use your own card.\n` +
+              `Generate a card now (or keep the one you have).`);
+      } catch (err) {
+        console.error(err);
+        alert("Failed to create room. Check your internet connection.");
+      }
+    }
+
+    function joinRoomFromInput() {
+      const input = document.getElementById('room-code-input');
+      if (!input) return;
+      const code = input.value.trim().toUpperCase();
+      if (code.length < 4) {
+        alert("Please enter a valid room code.");
+        return;
+      }
+      joinRoom(code);
+      input.value = '';
+    }
+
+    function joinRoom(code) {
+      if (roomListener) {
+        roomListener.off();
+      }
+
+      currentRoomCode = code.toUpperCase();
+      updateRoomUI();
+
+      const roomRef = db.ref('rooms/' + currentRoomCode);
+
+      roomRef.once('value').then(snapshot => {
+        const data = snapshot.val();
+        if (!data) {
+          alert("Room not found. Double-check the code.");
+          leaveRoom();
+          return;
+        }
+
+        // IMPORTANT: We do NOT load a card from the room.
+        // Everyone keeps their own card. We only sync the marks (squares).
+        squareState = data.squares || {};
+
+        renderGrid();
+        updateMarkedCount();
+
+        // Now start listening for live updates
+        listenToRoom(currentRoomCode);
+
+        alert(`Joined room ${currentRoomCode}!\n\n` +
+              `Marks from everyone in the room will appear on your card. ` +
+              `You can generate your own card if you want.`);
+      }).catch(err => {
+        console.error(err);
+        alert("Failed to join room.");
+        leaveRoom();
+      });
+    }
+
+    function listenToRoom(code) {
+      if (roomListener) roomListener.off();
+
+      const roomRef = db.ref('rooms/' + code);
+
+      roomListener = roomRef.on('value', snapshot => {
+        const data = snapshot.val();
+        if (!data) return;
+
+        // Only sync the shared marks (squares). Cards are personal.
+        const incomingSquares = data.squares || {};
+        let changed = false;
+
+        for (let idx in incomingSquares) {
+          const newState = incomingSquares[idx];
+          const current = squareState[idx];
+
+          if (!current || current.ts < (newState.ts || 0)) {
+            squareState[idx] = newState;
+            changed = true;
+          }
+        }
+
+        if (changed) {
+          renderGrid();
+          updateMarkedCount();
+        }
+      });
+    }
+
+    async function leaveRoom() {
+      if (roomListener) {
+        roomListener.off();
+        roomListener = null;
+      }
+
+      currentRoomCode = null;
+      updateRoomUI();
+
+      // Go back to local-only mode
+      alert("Left the room. You're now back in local mode.");
+    }
+
+
+
+    function simpleHash(str) {
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+        hash |= 0;
+      }
+      return Math.abs(hash).toString(36).toUpperCase().slice(0, 6);
+    }
+
+    // ==================== BINGO DETECTION ====================
+    function checkBingo(showAlertIfNone = true) {
+      if (!currentCard.length) return false;
+
+      const wins = [];
+      const size = 5;
+
+      const isCompleted = (i) => !!(squareState[i] && squareState[i].markedBy);
+
+      // Rows
+      for (let r = 0; r < size; r++) {
+        const row = [0,1,2,3,4].map(c => r * 5 + c);
+        if (row.every(i => isCompleted(i))) wins.push({type: 'Row', indices: row});
+      }
+      // Columns
+      for (let c = 0; c < size; c++) {
+        const col = [0,1,2,3,4].map(r => r * 5 + c);
+        if (col.every(i => isCompleted(i))) wins.push({type: 'Column', indices: col});
+      }
+      // Diagonals
+      const diag1 = [0,6,12,18,24];
+      const diag2 = [4,8,12,16,20];
+      if (diag1.every(i => isCompleted(i))) wins.push({type: 'Diagonal', indices: diag1});
+      if (diag2.every(i => isCompleted(i))) wins.push({type: 'Diagonal', indices: diag2});
+
+      if (wins.length > 0) {
+        showWinOverlay(wins);
+        return true;
+      } else if (showAlertIfNone) {
+        alert("Not yet... keep hustling!");
+      }
+      return false;
+    }
+
+    function showWinOverlay(wins) {
+      const overlay = document.getElementById('win-overlay');
+      overlay.style.display = 'flex';
+      
+      // Fire confetti
+      launchConfetti();
+      
+      // Optional: mark the winning lines visually (quick flash)
+      setTimeout(() => {
+        wins.forEach(win => {
+          win.indices.forEach(i => {
+            const cells = document.querySelectorAll('#bingo-grid > div');
+            if (cells[i]) {
+              cells[i].style.boxShadow = '0 0 0 4px #fde047 inset';
+              setTimeout(() => {
+                if (cells[i]) cells[i].style.boxShadow = '';
+              }, 1400);
+            }
+          });
+        });
+      }, 300);
+    }
+
+    function hideWinOverlay() {
+      document.getElementById('win-overlay').style.display = 'none';
+    }
+
+    // Very small inline confetti (no external deps)
+    function launchConfetti() {
+      const colors = ['#facc15', '#c026ff', '#22c55e', '#e0e7ff'];
+      const container = document.createElement('div');
+      container.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:70;overflow:hidden';
+      document.body.appendChild(container);
+
+      for (let i = 0; i < 140; i++) {
+        const p = document.createElement('div');
+        p.style.cssText = `position:absolute;width:7px;height:9px;background:${colors[i % colors.length]};border-radius:1px;left:${Math.random()*100}vw;top:-20px;opacity:${0.6 + Math.random()*0.4}`;
+        container.appendChild(p);
+
+        const angle = Math.random() * 70 + 55;
+        const duration = 1600 + Math.random() * 2200;
+        const xDrift = (Math.random() - 0.5) * 280;
+
+        p.animate([
+          { transform: `translateY(0) translateX(0) rotate(0deg)`, opacity: p.style.opacity },
+          { transform: `translateY(${window.innerHeight + 60}px) translateX(${xDrift}px) rotate(${angle * (Math.random() > 0.5 ? 1 : -1) * 3.6}deg)`, opacity: 0 }
+        ], {
+          duration,
+          easing: 'cubic-bezier(.23,1,.32,1)'
+        }).onfinish = () => p.remove();
+      }
+
+      setTimeout(() => container.remove(), 5200);
+    }
+
+    // ==================== PERSISTENCE ====================
+    const STORAGE_KEY = 'vegasBingoState_v1';
+
+    function saveToLocalStorage(seed = null) {
+      const state = {
+        challenges: challenges,
+        currentCard: currentCard,
+        squareState: squareState,
+        playerName: playerName,
+        lastSeed: seed || document.getElementById('seed-input')?.value?.trim() || null,
+        ts: Date.now()
+      };
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch (e) { 
+        console.warn('Could not save state (storage full or private mode?)');
+      }
+    }
+
+    function loadFromLocalStorage() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return false;
+
+        const state = JSON.parse(raw);
+        
+        if (state.challenges && state.challenges.length > 50) {
+          challenges = state.challenges;
+        }
+        
+        if (state.currentCard && state.currentCard.length === 25) {
+          currentCard = state.currentCard;
+          squareState = state.squareState || {};
+          
+          if (state.playerName) {
+            playerName = state.playerName;
+            const nameInput = document.getElementById('player-name');
+            if (nameInput) nameInput.value = playerName;
+          }
+          
+          const seedInput = document.getElementById('seed-input');
+          if (seedInput && state.lastSeed) seedInput.value = state.lastSeed;
+          
+          renderGrid();
+          updateCardInfo(state.lastSeed);
+          return true;
+        }
+      } catch (e) {}
+      return false;
+    }
+
+    // ==================== URL SHARING ====================
+    function shareCard() {
+      if (!currentCard.length) {
+        alert("Generate a card first!");
+        return;
+      }
+      
+      const seed = document.getElementById('seed-input').value.trim();
+      let url = location.origin + location.pathname;
+      
+      if (seed) {
+        url += '?seed=' + encodeURIComponent(seed);
+      } else {
+        // Encode the exact 24 variable items (skip center)
+        const variable = [...currentCard.slice(0,12), ...currentCard.slice(13)];
+        const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(variable))));
+        url += '?card=' + encoded;
+      }
+      
+      navigator.clipboard.writeText(url).then(() => {
+        const originalText = event.target?.innerHTML || '';
+        const btns = document.querySelectorAll('button');
+        // Show toast
+        const toast = document.createElement('div');
+        toast.className = 'fixed bottom-4 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-6 py-2 rounded-3xl text-sm shadow-xl flex items-center gap-x-2';
+        toast.innerHTML = `<i class="fa-solid fa-check"></i> <span>Link copied! Send it to your crew.</span>`;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 2400);
+      }).catch(() => {
+        prompt("Copy this link and send to your friends:", url);
+      });
+    }
+
+    function loadFromURL() {
+      const params = new URLSearchParams(location.search);
+      const seed = params.get('seed');
+      const cardParam = params.get('card');
+
+      if (seed) {
+        generateCard(seed);
+        // Clean URL after loading (optional)
+        // history.replaceState({}, '', location.pathname);
+        return true;
+      }
+      
+      if (cardParam) {
+        try {
+          const decoded = JSON.parse(decodeURIComponent(escape(atob(cardParam))));
+          if (Array.isArray(decoded) && decoded.length === 24) {
+            currentCard = [
+              ...decoded.slice(0, 12),
+              CENTER_CHALLENGE,
+              ...decoded.slice(12)
+            ];
+            squareState = {};
+            renderGrid();
+            updateCardInfo(null);
+            document.getElementById('seed-input').value = '';
+            return true;
+          }
+        } catch (e) {}
+      }
+      return false;
+    }
+
+    // ==================== ALL CHALLENGES VIEW ====================
+    function showAllChallenges() {
+      const modal = document.getElementById('challenges-modal');
+      const listEl = document.getElementById('challenges-list');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      
+      renderChallengeList(listEl, '');
+      document.getElementById('challenge-search').focus();
+    }
+
+    function hideAllChallenges() {
+      const modal = document.getElementById('challenges-modal');
+      modal.classList.remove('flex');
+      modal.classList.add('hidden');
+    }
+
+    function filterChallenges() {
+      const q = document.getElementById('challenge-search').value.toLowerCase();
+      const listEl = document.getElementById('challenges-list');
+      renderChallengeList(listEl, q);
+    }
+
+    function renderChallengeList(container, query) {
+      container.innerHTML = '';
+      const onCard = new Set(currentCard);
+      
+      challenges.forEach((text, idx) => {
+        if (query && !text.toLowerCase().includes(query)) return;
+        
+        const div = document.createElement('div');
+        div.className = `px-3 py-2 rounded-2xl mb-1 flex items-start gap-3 ${onCard.has(text) ? 'bg-yellow-900/30 border border-yellow-400/40' : 'hover:bg-slate-800'}`;
+        
+        const icon = document.createElement('i');
+        icon.className = onCard.has(text) 
+          ? 'fa-solid fa-check-circle text-yellow-400 mt-0.5' 
+          : 'fa-regular fa-circle text-slate-500 mt-0.5';
+        
+        const span = document.createElement('span');
+        span.className = onCard.has(text) ? 'text-yellow-200' : '';
+        span.textContent = text;
+        
+        div.appendChild(icon);
+        div.appendChild(span);
+        container.appendChild(div);
+      });
+      
+      if (!container.children.length) {
+        container.innerHTML = `<div class="text-center py-8 text-slate-400">No matches for “${query}”</div>`;
+      }
+    }
+
+    // ==================== CUSTOMIZE ====================
+    function showCustomizeModal() {
+      const modal = document.getElementById('customize-modal');
+      const ta = document.getElementById('custom-list');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      ta.value = challenges.join('\n');
+    }
+
+    function hideCustomizeModal() {
+      const modal = document.getElementById('customize-modal');
+      modal.classList.remove('flex');
+      modal.classList.add('hidden');
+    }
+
+    function applyCustomList() {
+      const ta = document.getElementById('custom-list');
+      const lines = ta.value.split('\n').map(l => l.trim()).filter(Boolean);
+      
+      if (lines.length < 10) {
+        alert("You need at least 10 challenges for a good game.");
+        return;
+      }
+      
+      challenges = lines;
+      saveToLocalStorage();
+      hideCustomizeModal();
+      
+      // Regenerate current card with new pool if we have one
+      if (currentCard.length) {
+        const seed = document.getElementById('seed-input').value.trim();
+        if (seed) {
+          generateCard(seed);
+        } else {
+          // Try to preserve as many as possible or just warn
+          alert("Challenge list updated. Generate a new card to use the changes.");
+        }
+      }
+    }
+
+    function resetToOriginalList() {
+      if (!confirm("Reset to the original 100 Vegas challenges?")) return;
+      challenges = [...ORIGINAL_CHALLENGES];
+      localStorage.removeItem(STORAGE_KEY); // also wipe state to be safe
+      document.getElementById('custom-list').value = challenges.join('\n');
+      alert("Original list restored. Generate a fresh card to continue.");
+    }
+
+    // ==================== INIT ====================
+    function init() {
+      // Try URL first (shared cards win)
+      const loadedFromURL = loadFromURL();
+      
+      if (!loadedFromURL) {
+        // Restore previous session
+        const restored = loadFromLocalStorage();
+        
+        if (!restored) {
+          // Brand new visitor — give them a nice starter card
+          setTimeout(() => {
+            generateCard("Vegas2026"); // friendly default seed
+          }, 80);
+        }
+      }
+      
+      // Keyboard shortcuts
+      document.addEventListener('keydown', (e) => {
+        if (e.key.toLowerCase() === 'r' && (e.metaKey || e.ctrlKey)) {
+          e.preventDefault();
+          generateRandomCard();
+        }
+        if (e.key === '?') {
+          e.preventDefault();
+          const modal = document.getElementById('challenges-modal');
+          if (!modal.classList.contains('hidden')) {
+            hideAllChallenges();
+          } else {
+            showAllChallenges();
+          }
+        }
+      });
+      
+      // Make sure the seed input has a nice placeholder example
+      const seedInput = document.getElementById('seed-input');
+      if (seedInput && !seedInput.value) {
+        seedInput.placeholder = "SmithVegas2026 (same seed = same card)";
+      }
+
+      // Sync player name input
+      const nameInput = document.getElementById('player-name');
+      if (nameInput) {
+        nameInput.value = playerName || "Player 1";
+      }
+      
+      // Initial tip if empty
+      setTimeout(() => {
+        if (!currentCard.length) {
+          // safety net
+          generateCard("Vegas2026");
+        }
+      }, 420);
+      
+      // Easter egg: Konami-ish
+      let seq = '';
+      document.addEventListener('keypress', (e) => {
+        seq += e.key.toLowerCase();
+        if (seq.length > 5) seq = seq.slice(-5);
+        if (seq.includes('vegas')) {
+          seq = '';
+          const grid = document.getElementById('bingo-grid');
+          grid.style.transition = 'transform 300ms';
+          grid.style.transform = 'rotate(2deg)';
+          setTimeout(() => grid.style.transform = '', 320);
+        }
+      });
+      
+      console.log('%c[VEGAS BINGO] Ready. 100 challenges loaded.', 'color:#64748b');
+    }
+
+    // Boot
+    window.onload = init;
+  </script>
+</body>
+</html>
